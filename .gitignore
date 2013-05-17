@@ -1,5 +1,8 @@
 *.py[cod]
 
+# Local config
+config.py
+
 # virtualenv
 venv
 

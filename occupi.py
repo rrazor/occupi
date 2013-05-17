@@ -1,13 +1,10 @@
+import requests
 import time
 import RPi.GPIO as io
 
-start_ts     =  time.time( )
-empty_ts     =  start_ts
-occupied_ts  =  start_ts
-
-state_different_count  =  0
-
-COUNT_INTERVAL        =  60
+API_KEY               =  'API KEY HERE'
+API_URL               =  'URL TO POST TO HERE'
+COUNT_INTERVAL        =  120
 GRAPH_SIZE            =  5
 SENSE_PCT             =  0.6
 SENSOR_POLL_INTERVAL  =  0.5
@@ -15,6 +12,14 @@ STATE_EMPTY           =  0
 STATE_OCCUPIED        =  1
 
 STATE_DEFAULT         =  STATE_EMPTY
+
+from config import *
+
+start_ts     =  time.time( )
+empty_ts     =  start_ts
+occupied_ts  =  start_ts
+
+state_different_count  =  0
 
 state = None
 
@@ -60,6 +65,9 @@ def change_state ( new_state ):
 		occupied_ts  =  now_ts
 		light_led( True )
 	state  =  new_state
+	p  =  { 'occupied' : state, 'key' : API_KEY }
+	r  =  requests.post( API_URL, data=p )
+	output( "Sent to API, status: %d" % r.status_code )
 
 
 def get_count_to_change ( state ):
@@ -78,11 +86,15 @@ def handle_sensed_state ( state, sensed_state ):
 
 	count_to_change  =  get_count_to_change( state )
 
-	if sensed_state != state:
-		state_different_count += 1 
+	if sensed_state == STATE_OCCUPIED:
+		increment  =  4
+	else:
+		increment  =  1
 
+	if sensed_state != state:
+		state_different_count  +=  increment 
 	elif state_different_count > 0:
-		state_different_count  -=  1
+		state_different_count  -=  increment
 
 	if state == STATE_OCCUPIED:
 		graph_amount  =  count_to_change - state_different_count
