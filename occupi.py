@@ -1,5 +1,6 @@
 #!/usr/bin/python2.7
 
+from flask import Flask
 import time
 import RPi.GPIO as io
 
@@ -17,10 +18,17 @@ state = EMPTY
 pir_pin = 18
 led_pin = 25
 
+# Set up Flask
+app = Flask( __name__ )
+
+@app.route('/')
+def get_state ( ):
+	global state
+	return flask.jsonify( { 'state': state } )
+
+# Set up GPIO
 io.setwarnings( False )
-
 io.setmode( io.BCM )
-
 io.setup( pir_pin, io.IN )
 io.setup( led_pin, io.OUT )
 
@@ -65,17 +73,19 @@ def light_led ( on_or_off ):
 		io.output( led_pin, io.LOW )
 
 
-output( "START" )
+if __name__ == '__main__':
+	output( "START" )
+	app.run( )
 
-try:
-	while True:
-		now_ts  =  time.time( )
-		if io.input( pir_pin ):
-			change_state( OCCUPIED )
-		elif state == OCCUPIED and ( now_ts - occupied_ts > SECS_UNTIL_EMPTY ):
-			change_state( EMPTY )
-		time.sleep( 0.5 )
-except KeyboardInterrupt:
-	light_led( False )
-	output( "EXIT" )
-	exit( )
+	try:
+		while True:
+			now_ts  =  time.time( )
+			if io.input( pir_pin ):
+				change_state( OCCUPIED )
+			elif state == OCCUPIED and ( now_ts - occupied_ts > SECS_UNTIL_EMPTY ):
+				change_state( EMPTY )
+			time.sleep( 0.5 )
+	except KeyboardInterrupt:
+		light_led( False )
+		output( "EXIT" )
+		exit( )
