@@ -1,6 +1,3 @@
-#!/usr/bin/python2.7
-
-from flask import Flask
 import time
 import RPi.GPIO as io
 
@@ -8,23 +5,21 @@ start_ts     =  time.time( )
 empty_ts     =  start_ts
 occupied_ts  =  start_ts
 
-EMPTY     =  0
-OCCUPIED  =  1
+state_different_count  =  0
 
-SECS_UNTIL_EMPTY = 15 # Time until a quad is considered unoccupied
+COUNT_INTERVAL        =  60
+GRAPH_SIZE            =  5
+SENSE_PCT             =  0.6
+SENSOR_POLL_INTERVAL  =  0.5
+STATE_EMPTY           =  0
+STATE_OCCUPIED        =  1
 
-state = EMPTY
+STATE_DEFAULT         =  STATE_EMPTY
+
+state = None
 
 pir_pin = 18
 led_pin = 25
-
-# Set up Flask
-app = Flask( __name__ )
-
-@app.route('/')
-def get_state ( ):
-	global state
-	return flask.jsonify( { 'state': state } )
 
 # Set up GPIO
 io.setwarnings( False )
@@ -33,9 +28,9 @@ io.setup( pir_pin, io.IN )
 io.setup( led_pin, io.OUT )
 
 def format_state ( state ):
-	if state == EMPTY:
+	if state == STATE_EMPTY:
 		return "EMPTY"
-	elif state == OCCUPIED:
+	elif state == STATE_OCCUPIED:
 		return "OCCUPIED"
 	else:
 		return "UNKNOWN"
@@ -43,6 +38,7 @@ def format_state ( state ):
 
 def format_time ( ts ):
 	return time.strftime( "%Y-%m-%d %H:%M:%S", time.localtime( ts ) )
+
 
 def output ( message ):
 	print "%s: %s" % ( format_time( time.time( ) ), message )
@@ -57,13 +53,17 @@ def change_state ( new_state ):
 	now_ts  =  time.time( )
 	output( format_state( new_state ) )
 
-	if new_state == EMPTY:
+	if new_state == STATE_EMPTY:
 		empty_ts  =  now_ts
 		light_led( False )
-	elif new_state == OCCUPIED:
+	elif new_state == STATE_OCCUPIED:
 		occupied_ts  =  now_ts
 		light_led( True )
 	state  =  new_state
+
+
+def get_count_to_change ( state ):
+	return int( COUNT_INTERVAL / SENSOR_POLL_INTERVAL * SENSE_PCT )
 
 
 def light_led ( on_or_off ):
@@ -73,19 +73,67 @@ def light_led ( on_or_off ):
 		io.output( led_pin, io.LOW )
 
 
+def handle_sensed_state ( state, sensed_state ):
+	global state_different_count
+
+	count_to_change  =  get_count_to_change( state )
+
+	if sensed_state != state:
+		state_different_count += 1 
+
+	elif state_different_count > 0:
+		state_different_count  -=  1
+
+	if state == STATE_OCCUPIED:
+		graph_amount  =  count_to_change - state_different_count
+	else:
+		graph_amount  =  state_different_count
+
+	output( "%-10s: sensed %-10s [%-5s] %3d" % ( format_state( state ), format_state( sensed_state ), string_graph( graph_amount, count_to_change, GRAPH_SIZE ), graph_amount ) )
+
+	if should_change_state( state, state_different_count ):
+		change_state( sensed_state )
+		state_different_count  =  0
+
+
+def sense_state ( ):
+	if io.input( pir_pin ):
+		return STATE_OCCUPIED
+	else:
+		return STATE_EMPTY
+
+
+def should_change_state ( state, different_count ):
+	count_to_change  =  get_count_to_change( state )
+
+	if different_count >= count_to_change:
+		return True
+	else:
+		return False
+
+
+def string_graph ( n, max, size ):
+	n_ticks  =  int( float( n ) / float( max ) * float( size ) )
+	output  =  ""
+	for i in range( 0, n_ticks ):
+		output  =  output + "#"
+	return output
+
+
 if __name__ == '__main__':
-	output( "START" )
-	app.run( )
+	output( "Starting" )
+	change_state( STATE_DEFAULT )
 
 	try:
 		while True:
-			now_ts  =  time.time( )
-			if io.input( pir_pin ):
-				change_state( OCCUPIED )
-			elif state == OCCUPIED and ( now_ts - occupied_ts > SECS_UNTIL_EMPTY ):
-				change_state( EMPTY )
-			time.sleep( 0.5 )
+			now_ts        =  time.time( )
+			sensed_state  =  sense_state( )
+
+			handle_sensed_state( state, sensed_state )
+
+			time.sleep( SENSOR_POLL_INTERVAL )
+
 	except KeyboardInterrupt:
-		light_led( False )
-		output( "EXIT" )
+		change_state( STATE_DEFAULT )
+		output( "Exiting after keyboard interrupt" )
 		exit( )
