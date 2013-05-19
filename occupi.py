@@ -1,11 +1,15 @@
 import requests
+import subprocess
 import time
 import RPi.GPIO as io
 
 API_KEY               =  'API KEY HERE'
+API_UPDATE_INTERVAL   =  300 # Check in every 5m
 API_URL               =  'URL TO POST TO HERE'
 COUNT_INTERVAL        =  120
 GRAPH_SIZE            =  5
+PIN_INPUT_PIR         =  18
+PIN_OUTPUT_LED        =  25
 SENSE_PCT             =  0.6
 SENSOR_POLL_INTERVAL  =  0.5
 STATE_EMPTY           =  0
@@ -19,18 +23,17 @@ start_ts     =  time.time( )
 empty_ts     =  start_ts
 occupied_ts  =  start_ts
 
+updated_ts   =  None
+
 state_different_count  =  0
 
 state = None
 
-pir_pin = 18
-led_pin = 25
-
 # Set up GPIO
 io.setwarnings( False )
 io.setmode( io.BCM )
-io.setup( pir_pin, io.IN )
-io.setup( led_pin, io.OUT )
+io.setup( PIN_INPUT_PIR, io.IN )
+io.setup( PIN_OUTPUT_LED, io.OUT )
 
 def format_state ( state ):
 	if state == STATE_EMPTY:
@@ -65,9 +68,20 @@ def change_state ( new_state ):
 		occupied_ts  =  now_ts
 		light_led( True )
 	state  =  new_state
-	p  =  { 'occupied' : state, 'key' : API_KEY }
+	post_state_to_api( state )
+
+def post_state_to_api ( state ):
+	global updated_ts
+
+	p  =  { 'occupied' : state, 'key' : API_KEY, 'ip' : determine_ip( ) }
 	r  =  requests.post( API_URL, data=p )
 	output( "Sent to API, status: %d" % r.status_code )
+	updated_ts  =  time.time( )
+
+
+def determine_ip ( ):
+	ip_string  =  subprocess.check_output( ["hostname", "-I"] )
+	return ip_string
 
 
 def get_count_to_change ( state ):
@@ -76,9 +90,9 @@ def get_count_to_change ( state ):
 
 def light_led ( on_or_off ):
 	if on_or_off == True:
-		io.output( led_pin, io.HIGH )
+		io.output( PIN_OUTPUT_LED, io.HIGH )
 	else:
-		io.output( led_pin, io.LOW )
+		io.output( PIN_OUTPUT_LED, io.LOW )
 
 
 def handle_sensed_state ( state, sensed_state ):
@@ -109,7 +123,7 @@ def handle_sensed_state ( state, sensed_state ):
 
 
 def sense_state ( ):
-	if io.input( pir_pin ):
+	if io.input( PIN_INPUT_PIR ):
 		return STATE_OCCUPIED
 	else:
 		return STATE_EMPTY
@@ -142,6 +156,9 @@ if __name__ == '__main__':
 			sensed_state  =  sense_state( )
 
 			handle_sensed_state( state, sensed_state )
+
+			if now_ts - updated_ts > API_UPDATE_INTERVAL:
+				post_state_to_api( state )
 
 			time.sleep( SENSOR_POLL_INTERVAL )
 
