@@ -38,8 +38,8 @@ class Occupi:
 
 		# Daemon-related atttributes
 		self.stdin_path       =  '/dev/null'
-		self.stdout_path      =  '/dev/tty'
-		self.stderr_path      =  '/dev/tty'
+		self.stdout_path      =  '/dev/null'
+		self.stderr_path      =  '/dev/null'
 		self.pidfile_path     =  PID_FILE_PATH
 		self.pidfile_timeout  =  5
 
