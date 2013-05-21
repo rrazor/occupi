@@ -5,6 +5,8 @@ import subprocess
 import time
 import RPi.GPIO as io
 
+from daemon import runner
+
 API_KEY               =  'API KEY HERE'
 API_UPDATE_INTERVAL   =  300 # Check in every 5m
 API_URL               =  'URL TO POST TO HERE'
@@ -12,6 +14,8 @@ COUNT_INTERVAL        =  120
 GRAPH_SIZE            =  5
 INCREMENT_EMPTY       =  1
 INCREMENT_OCCUPIED    =  4
+LOG_FILE_PATH         =  '/var/log/occupi.log'
+PID_FILE_PATH         =  '/var/run/occupi.pid'
 PIN_INPUT_PIR         =  18
 PIN_OUTPUT_LED        =  25
 SENSE_PCT             =  0.6
@@ -26,10 +30,19 @@ from config import *
 class Occupi:
 
 	def __init__ ( self ):
-		self.updated_ts   =  None
 		self.state_different_count  =  0
-		self.state = None
+		self.state                  =  None
+		self.updated_ts             =  None
 
+		# Daemon-related atttributes
+		self.stdin_path       =  '/dev/null'
+		self.stdout_path      =  '/dev/tty'
+		self.stderr_path      =  '/dev/tty'
+		self.pidfile_path     =  PID_FILE_PATH
+		self.pidfile_timeout  =  5
+
+
+	def run ( self ):
 		# Set up Logging
 		self.logger  =  logging.getLogger( self.__class__.__name__ )
 		self.logger.setLevel( logging.INFO )
@@ -39,7 +52,7 @@ class Occupi:
 			datefmt='%Y-%m-%d %H:%M:%S'
 			)
 
-		handler  =  logging.handlers.RotatingFileHandler( '/tmp/occupi.log', maxBytes=1024*1024*20, backupCount=5 )
+		handler  =  logging.handlers.RotatingFileHandler( LOG_FILE_PATH, maxBytes=1024*1024*20, backupCount=5 )
 		handler.setFormatter( formatter )
 
 		self.logger.addHandler( handler )
@@ -60,7 +73,6 @@ class Occupi:
 
 		self.info( "Startup complete." )
 
-	def run ( self ):
 		while True:
 			now_ts        =  time.time( )
 			sensed_state  =  self.sense_state( )
@@ -156,7 +168,7 @@ class Occupi:
 			self.string_graph( graph_amount, count_to_change, GRAPH_SIZE ),
 			graph_amount
 			)
-		self.info( msg )
+		self.debug( msg )
 
 		if self.should_change_state( state, self.state_different_count ):
 			self.change_state( sensed_state )
@@ -189,4 +201,5 @@ class Occupi:
 
 if __name__ == '__main__':
 	occupi  =  Occupi( )
-	occupi.run( )
+	daemon_runner  =  runner.DaemonRunner( occupi )
+	daemon_runner.do_action( )
