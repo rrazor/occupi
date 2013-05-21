@@ -18,6 +18,7 @@ LOG_FILE_PATH         =  '/var/log/occupi.log'
 PID_FILE_PATH         =  '/var/run/occupi.pid'
 PIN_INPUT_PIR         =  18
 PIN_OUTPUT_LED        =  25
+ROOM_ID               =  'ROOM-0'
 SENSE_PCT             =  0.6
 SENSOR_POLL_INTERVAL  =  0.5
 STATE_EMPTY           =  0
@@ -32,6 +33,7 @@ class Occupi:
 	def __init__ ( self ):
 		self.state_different_count  =  0
 		self.state                  =  None
+		self.state_ts               =  None
 		self.updated_ts             =  None
 
 		# Daemon-related atttributes
@@ -48,7 +50,7 @@ class Occupi:
 		self.logger.setLevel( logging.INFO )
 
 		formatter  =  logging.Formatter(
-			fmt='%(asctime)s - %(message)s',
+			fmt='%(asctime)s - %(room_id)s - %(message)s',
 			datefmt='%Y-%m-%d %H:%M:%S'
 			)
 
@@ -56,6 +58,9 @@ class Occupi:
 		handler.setFormatter( formatter )
 
 		self.logger.addHandler( handler )
+		self.logger_adapter  =  logging.LoggerAdapter( self.logger, {
+			'room_id' : ROOM_ID
+			} )
 
 		self.info( "Starting" )
 
@@ -98,10 +103,10 @@ class Occupi:
 
 
 	def info ( self, message ):
-		self.logger.info( message )
+		self.logger_adapter.info( message )
 
 	def debug ( self, message ):
-		self.logger.debug( message )
+		self.logger_adapter.debug( message )
 
 
 	def change_state ( self, new_state ):
@@ -110,13 +115,27 @@ class Occupi:
 			return
 
 		now_ts  =  time.time( )
-		self.info( self.format_state( new_state ) )
+
+		if self.state_ts != None:
+			state_length_sec  =  round( now_ts - self.state_ts )
+			msg  =  "%s - was %s for %d seconds" % (
+				self.format_state( new_state ),
+				self.format_state( self.state ),
+				state_length_sec
+				)
+		else:
+			msg  =  "%s" % self.format_state( new_state )
+
+		self.info( msg )
 
 		if new_state == STATE_EMPTY:
 			self.light_led( False )
 		elif new_state == STATE_OCCUPIED:
 			self.light_led( True )
-		self.state  =  new_state
+
+		self.state     =  new_state
+		self.state_ts  =  now_ts
+
 		self.post_state_to_api( self.state )
 
 	def post_state_to_api ( self, state ):
