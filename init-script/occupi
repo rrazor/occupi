@@ -1,0 +1,44 @@
+#!/bin/sh
+# /etc/init.d/occupi
+
+### BEGIN INIT INFO
+# Provides:				occupi
+# Required-Start:		$network
+# Required-Stop:		$network
+# Default-Start:		2 3 4 5
+# Default-Stop:			0 1 6
+# Short-Description:	Room occupancy daemon, occupi
+# Description:			See http://github.com/rrazor/occupi
+### END INIT INFO
+
+# To install:
+# sudo update-rc.d init-script/occupi defaults
+
+# To uninstall:
+# sudo update-rc.d -f init-script/occupi defaults
+
+# If you're using virtualenv (and you should be!), point this at your 
+# virtualenv's bin/python file
+PATH_TO_PYTHON=/path/to/virtualenv/bin/python
+PATH_TO_OCCUPI=/path/to/occupi/occupi.py
+
+case "$1" in
+	start)
+		echo "Starting occupi"
+		$PATH_TO_PYTHON $PATH_TO_OCCUPI start
+		;;
+	stop)
+		echo "Stopping occupi"
+		$PATH_TO_PYTHON $PATH_TO_OCCUPI stop
+		;;
+	restart)
+		echo "Restarting occupi"
+		$PATH_TO_PYTHON $PATH_TO_OCCUPI restart
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+		;;
+esac
+
+exit 0
