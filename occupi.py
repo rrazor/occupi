@@ -10,10 +10,10 @@ from daemon import runner
 API_KEY               =  'API KEY HERE'
 API_UPDATE_INTERVAL   =  300 # Check in every 5m
 API_URL               =  'URL TO POST TO HERE'
-COUNT_INTERVAL        =  120
+COUNT_INTERVAL        =  360
 GRAPH_SIZE            =  5
 INCREMENT_EMPTY       =  1
-INCREMENT_OCCUPIED    =  4
+INCREMENT_OCCUPIED    =  32
 LOG_FILE_PATH         =  '/var/log/occupi.log'
 PID_FILE_PATH         =  '/var/run/occupi.pid'
 PIN_INPUT_PIR         =  18
@@ -78,16 +78,20 @@ class Occupi:
 
 		self.info( "Startup complete." )
 
-		while True:
-			now_ts        =  time.time( )
-			sensed_state  =  self.sense_state( )
+		try:
+			while True:
+				now_ts        =  time.time( )
+				sensed_state  =  self.sense_state( )
 
-			self.handle_sensed_state( self.state, sensed_state )
+				self.handle_sensed_state( self.state, sensed_state )
 
-			if now_ts - self.updated_ts > API_UPDATE_INTERVAL:
-				self.post_state_to_api( self.state )
+				if now_ts - self.updated_ts > API_UPDATE_INTERVAL:
+					self.post_state_to_api( self.state )
 
-			time.sleep( SENSOR_POLL_INTERVAL )
+				time.sleep( SENSOR_POLL_INTERVAL )
+		except Exception, err:
+			self.logger_adapter.exception( 'Error in main loop:' )
+
 
 	def format_state ( self, state ):
 		if state == STATE_EMPTY:
