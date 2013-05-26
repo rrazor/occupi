@@ -6,6 +6,7 @@ import time
 import RPi.GPIO as io
 
 from daemon import runner
+from requests.exceptions import ConnectionError
 
 API_KEY               =  'API KEY HERE'
 API_UPDATE_INTERVAL   =  300 # Check in every 5m
@@ -145,9 +146,13 @@ class Occupi:
 	def post_state_to_api ( self, state ):
 
 		p  =  { 'occupied' : state, 'key' : API_KEY, 'ip' : self.determine_ip( ) }
-		r  =  requests.post( API_URL, data=p )
-		self.info( "Sent %-10s to API, status: %d" % ( self.format_state( state ), r.status_code ) )
-		self.updated_ts  =  time.time( )
+		try:
+			r  =  requests.post( API_URL, data=p )
+		except ConnectionError as e:
+			self.info( "Error contacting API: %s" % e )
+		else:
+			self.updated_ts  =  time.time( )
+			self.info( "Sent %-10s to API, status: %d" % ( self.format_state( state ), r.status_code ) )
 
 
 	def determine_ip ( self ):
