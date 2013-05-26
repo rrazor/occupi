@@ -35,7 +35,7 @@ class Occupi:
 		self.state_different_count  =  0
 		self.state                  =  None
 		self.state_ts               =  None
-		self.updated_ts             =  None
+		self.updated_ts             =  time.time( )
 
 		# Daemon-related atttributes
 		self.stdin_path       =  '/dev/null'
@@ -151,8 +151,9 @@ class Occupi:
 		except ConnectionError as e:
 			self.info( "Error contacting API: %s" % e )
 		else:
-			self.updated_ts  =  time.time( )
 			self.info( "Sent %-10s to API, status: %d" % ( self.format_state( state ), r.status_code ) )
+		finally:
+			self.updated_ts  =  time.time( )
 
 
 	def determine_ip ( self ):
