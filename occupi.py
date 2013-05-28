@@ -35,6 +35,7 @@ from config import *
 
 if HAS_GPIO == True:
 	import RPi.GPIO as io
+	import sensors.rpi
 
 class Occupi:
 
@@ -76,7 +77,7 @@ class Occupi:
 			io.setwarnings( False )
 			io.setmode( io.BCM )
 			io.setup( PIN_OUTPUT_LED, io.OUT )
-			self.sensor  =  sensors.PIRSensor( PIN_INPUT_PIR )
+			self.sensor  =  sensors.rpi.PIRSensor( PIN_INPUT_PIR )
 		else:
 			self.sensor  =  sensors.DummySensor( )
 
