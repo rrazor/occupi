@@ -6,6 +6,9 @@ config.py
 # virtualenv
 venv
 
+# Developer logfile
+occupi.log
+
 # C extensions
 *.so
 

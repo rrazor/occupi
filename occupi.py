@@ -1,21 +1,25 @@
+import collections
+import json
 import logging
 import logging.handlers
 import requests
+import sensors
 import subprocess
 import time
-import RPi.GPIO as io
 
-from daemon import runner
 from requests.exceptions import ConnectionError
 
 API_KEY               =  'API KEY HERE'
 API_UPDATE_INTERVAL   =  300 # Check in every 5m
 API_URL               =  'URL TO POST TO HERE'
 COUNT_INTERVAL        =  360
+DATA_BUFFER_SIZE      =  2 # Number of API_UPDATE_INTERVALs held in memory
 GRAPH_SIZE            =  5
+HAS_GPIO              =  True
 INCREMENT_EMPTY       =  1
 INCREMENT_OCCUPIED    =  32
 LOG_FILE_PATH         =  '/var/log/occupi.log'
+LOG_LEVEL             =  logging.INFO
 PID_FILE_PATH         =  '/var/run/occupi.pid'
 PIN_INPUT_PIR         =  18
 PIN_OUTPUT_LED        =  25
@@ -29,6 +33,9 @@ STATE_DEFAULT         =  STATE_EMPTY
 
 from config import *
 
+if HAS_GPIO == True:
+	import RPi.GPIO as io
+
 class Occupi:
 
 	def __init__ ( self ):
@@ -37,18 +44,17 @@ class Occupi:
 		self.state_ts               =  None
 		self.updated_ts             =  time.time( )
 
-		# Daemon-related atttributes
-		self.stdin_path       =  '/dev/null'
-		self.stdout_path      =  '/dev/null'
-		self.stderr_path      =  '/dev/null'
-		self.pidfile_path     =  PID_FILE_PATH
-		self.pidfile_timeout  =  5
+		# Ring buffer to store up to DATA_BUFFER_SIZE update intervals
+		# worth of data
+		n_per_update_interval  =  ( API_UPDATE_INTERVAL / SENSOR_POLL_INTERVAL )
+		max_data_in_memory     =  n_per_update_interval * DATA_BUFFER_SIZE
+		self.data_buffer       =  collections.deque( maxlen=max_data_in_memory )
 
 
 	def run ( self ):
 		# Set up Logging
-		self.logger  =  logging.getLogger( self.__class__.__name__ )
-		self.logger.setLevel( logging.INFO )
+		logger  =  logging.getLogger( self.__class__.__name__ )
+		logger.setLevel( LOG_LEVEL )
 
 		formatter  =  logging.Formatter(
 			fmt='%(asctime)s - %(room_id)s - %(message)s',
@@ -57,41 +63,44 @@ class Occupi:
 
 		handler  =  logging.handlers.RotatingFileHandler( LOG_FILE_PATH, maxBytes=1024*1024*20, backupCount=5 )
 		handler.setFormatter( formatter )
+		logger.addHandler( handler )
 
-		self.logger.addHandler( handler )
-		self.logger_adapter  =  logging.LoggerAdapter( self.logger, {
+		self.logger  =  logging.LoggerAdapter( logger, {
 			'room_id' : ROOM_ID
 			} )
 
-		self.info( "Starting" )
+		self.logger.info( "Starting" )
 
 		# Set up GPIO
-		io.setwarnings( False )
-		io.setmode( io.BCM )
-		io.setup( PIN_INPUT_PIR, io.IN )
-		io.setup( PIN_OUTPUT_LED, io.OUT )
+		if HAS_GPIO == True:
+			io.setwarnings( False )
+			io.setmode( io.BCM )
+			io.setup( PIN_OUTPUT_LED, io.OUT )
+			self.sensor  =  sensors.PIRSensor( PIN_INPUT_PIR )
+		else:
+			self.sensor  =  sensors.DummySensor( )
 
-		self.info( "GPIO pins wired" )
+		self.logger.info( "GPIO pins wired" )
 
 		self.change_state( STATE_DEFAULT )
 
-		self.info( "Initial state set" )
+		self.logger.info( "Initial state set" )
 
-		self.info( "Startup complete." )
+		self.logger.info( "Startup complete." )
 
 		try:
 			while True:
 				now_ts        =  time.time( )
 				sensed_state  =  self.sense_state( )
 
-				self.handle_sensed_state( self.state, sensed_state )
+				self.handle_sensed_state( self.state, sensed_state, now_ts )
 
 				if now_ts - self.updated_ts > API_UPDATE_INTERVAL:
 					self.post_state_to_api( self.state )
 
 				time.sleep( SENSOR_POLL_INTERVAL )
 		except Exception, err:
-			self.logger_adapter.exception( 'Error in main loop:' )
+			self.logger.exception( 'Error in main loop:' )
 
 
 	def format_state ( self, state ):
@@ -105,13 +114,6 @@ class Occupi:
 
 	def format_time ( self, ts ):
 		return time.strftime( "%Y-%m-%d %H:%M:%S", time.localtime( ts ) )
-
-
-	def info ( self, message ):
-		self.logger_adapter.info( message )
-
-	def debug ( self, message ):
-		self.logger_adapter.debug( message )
 
 
 	def change_state ( self, new_state ):
@@ -131,7 +133,7 @@ class Occupi:
 		else:
 			msg  =  "%s" % self.format_state( new_state )
 
-		self.info( msg )
+		self.logger.info( msg )
 
 		if new_state == STATE_EMPTY:
 			self.light_led( False )
@@ -143,22 +145,23 @@ class Occupi:
 
 		self.post_state_to_api( self.state )
 
+
 	def post_state_to_api ( self, state ):
 
-		p  =  { 'occupied' : state, 'key' : API_KEY, 'ip' : self.determine_ip( ) }
+		self.updated_ts  =  time.time( )
+
+		p  =  { 'occupied' : state, 'key' : API_KEY,
+			'data' : list( self.data_buffer )
+			}
+
 		try:
 			r  =  requests.post( API_URL, data=p )
 		except ConnectionError as e:
-			self.info( "Error contacting API: %s" % e )
+			self.logger.info( "Error contacting API: %s" % e )
+			self.logger.info( "Would have sent to API: %s" % json.dumps( p ) )
 		else:
-			self.info( "Sent %-10s to API, status: %d" % ( self.format_state( state ), r.status_code ) )
-		finally:
-			self.updated_ts  =  time.time( )
-
-
-	def determine_ip ( self ):
-		ip_string  =  subprocess.check_output( ["hostname", "-I"] )
-		return ip_string
+			self.logger.info( "Sent %-10s to API, status: %d" % ( self.format_state( state ), r.status_code ) )
+			self.data_buffer.clear( )
 
 
 	def get_count_to_change ( self, state ):
@@ -166,13 +169,18 @@ class Occupi:
 
 
 	def light_led ( self, on_or_off ):
-		if on_or_off == True:
+		if HAS_GPIO == False:
+			return
+		elif on_or_off == True:
 			io.output( PIN_OUTPUT_LED, io.HIGH )
 		else:
 			io.output( PIN_OUTPUT_LED, io.LOW )
 
 
-	def handle_sensed_state ( self, state, sensed_state ):
+	def handle_sensed_state ( self, state, sensed_state, now_ts ):
+
+		# Record the raw state
+		self.data_buffer.append( ( now_ts, sensed_state ) )
 
 		count_to_change  =  self.get_count_to_change( state )
 
@@ -197,7 +205,7 @@ class Occupi:
 			self.string_graph( graph_amount, count_to_change, GRAPH_SIZE ),
 			graph_amount
 			)
-		self.debug( msg )
+		self.logger.debug( msg )
 
 		if self.should_change_state( state, self.state_different_count ):
 			self.change_state( sensed_state )
@@ -205,7 +213,7 @@ class Occupi:
 
 
 	def sense_state ( self ):
-		if io.input( PIN_INPUT_PIR ):
+		if self.sensor.read( ):
 			return STATE_OCCUPIED
 		else:
 			return STATE_EMPTY
@@ -230,5 +238,4 @@ class Occupi:
 
 if __name__ == '__main__':
 	occupi  =  Occupi( )
-	daemon_runner  =  runner.DaemonRunner( occupi )
-	daemon_runner.do_action( )
+	occupi.run( )
