@@ -152,7 +152,7 @@ class Occupi:
 		self.updated_ts  =  time.time( )
 
 		p  =  { 'occupied' : state, 'key' : API_KEY,
-			'data' : list( self.data_buffer )
+			'data' : json.dumps( list( self.data_buffer ) )
 			}
 
 		try:
