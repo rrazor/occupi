@@ -20,7 +20,7 @@
 # If you're using virtualenv (and you should be!), point this at your 
 # virtualenv's bin/python file
 PATH_TO_PYTHON=/path/to/virtualenv/bin/python
-PATH_TO_OCCUPI=/path/to/occupi/occupi.py
+PATH_TO_OCCUPI=/path/to/occupi/occupid.py
 
 case "$1" in
 	start)
