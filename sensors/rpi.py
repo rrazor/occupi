@@ -1,4 +1,5 @@
 import RPi.GPIO as io
+import sensors
 
 
 class PIRSensor ( Sensor ):
