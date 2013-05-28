@@ -1,8 +1,8 @@
 import RPi.GPIO as io
-import sensors
+import sensor
 
 
-class PIRSensor ( Sensor ):
+class PIRSensor ( sensor.Sensor ):
 	"""Reads from an RPi GPIO pin connected to a PIR breakout board"""
 
 	def __init__ ( self, pin ):

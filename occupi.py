@@ -3,7 +3,7 @@ import json
 import logging
 import logging.handlers
 import requests
-import sensors
+import sensors, sensors.dummy
 import subprocess
 import time
 
@@ -79,7 +79,7 @@ class Occupi:
 			io.setup( PIN_OUTPUT_LED, io.OUT )
 			self.sensor  =  sensors.rpi.PIRSensor( PIN_INPUT_PIR )
 		else:
-			self.sensor  =  sensors.DummySensor( )
+			self.sensor  =  sensors.dummy.DummySensor( )
 
 		self.logger.info( "GPIO pins wired" )
 
